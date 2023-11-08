@@ -27,7 +27,44 @@ The Supervisor Exporter is a simple Go application that collects process status 
 
 Before running the Supervisor Exporter, make sure you have the following prerequisites:
 
-- Go (Golang) installed on your system.
+- Ensure that the Supervisord instance is configured to expose the XML-RPC interface. 
+
+Follow these steps to enable the XML-RPC endpoint on Supervisord:
+
+1. **Edit Supervisord Configuration:**
+
+   Open the configuration file for Supervisord, typically located at `/etc/supervisord.conf` or a custom path specified during installation. You can use your preferred text editor to edit the file. For example:
+
+   ```shell
+   vi /etc/supervisord.conf
+   ```
+2. **Configure the XML-RPC Server:**
+
+   Add the following lines to your Supervisord configuration file, if they are not already present, to configure the XML-RPC server:
+   
+   ```shell
+   [inet_http_server]
+   port = 127.0.0.1:9001
+   ```
+
+   * `port`: Specify the IP address and port where the XML-RPC server will listen. In the example above, it listens on 127.0.0.1:9001.
+
+3. **Save and Restart Supervisord:**
+   Save the configuration file and then restart Supervisord to apply the changes:
+
+   ```shell
+   supervisorctl reread
+   supervisorctl update
+   ```
+
+Once you have configured and verified the XML-RPC endpoint on Supervisord, you can use the Supervisor Exporter to monitor your processes using Prometheus.
+
+4. **Verify XML-RPC Endpoint:**
+
+   To ensure the XML-RPC endpoint is working, you can test it by using a tool like curl or accessing it in your web browser:
+   ```shell
+   curl http://127.0.0.1:9001/RPC2
+   ```
 
 ### Installation
 
