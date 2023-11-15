@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/kolo/xmlrpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,7 +25,14 @@ var (
 			Name: "supervisor_process_info",
 			Help: "Supervisor process information",
 		},
-		[]string{"name", "group", "state", "start", "exit_status"},
+		[]string{"name", "group", "state", "exit_status"},
+	)
+	supervisorProcessUptime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "supervisor_process_uptime",
+			Help: "Uptime of Supervisor processes",
+		},
+		[]string{"name", "group"},
 	)
 	supervisordUp = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -41,6 +49,10 @@ func init() {
 	flag.BoolVar(&version, "version", false, "Displays application version")
 
 	flag.Parse()
+
+	prometheus.MustRegister(processesMetric)
+	prometheus.MustRegister(supervisorProcessUptime)
+	prometheus.MustRegister(supervisordUp)
 }
 
 func fetchSupervisorProcessInfo() {
@@ -49,6 +61,7 @@ func fetchSupervisorProcessInfo() {
 		log.Printf("Error creating Supervisor XML-RPC client: %v", err)
 		supervisordUp.Set(0)
 		processesMetric.Reset()
+		supervisorProcessUptime.Reset()
 		return
 	}
 	defer client.Close()
@@ -58,6 +71,7 @@ func fetchSupervisorProcessInfo() {
 		log.Printf("Error calling Supervisor XML-RPC method: %v", err)
 		supervisordUp.Set(0)
 		processesMetric.Reset()
+		supervisorProcessUptime.Reset()
 		return
 	}
 
@@ -91,20 +105,27 @@ func fetchSupervisorProcessInfo() {
 
 	// Clear the previous metric values
 	processesMetric.Reset()
+	supervisorProcessUptime.Reset()
 
 	for _, data := range latestInfo {
 		name, _ := data["name"].(string)
 		group, _ := data["group"].(string)
 		state, _ := data["statename"].(string)
-		start, _ := data["start"].(int64)
 		exitStatus, _ := data["exitstatus"].(int)
+		startTime, _ := data["start"].(int64)
 
 		value := 0
 		if state == "RUNNING" {
 			value = 1
 		}
 
-		processesMetric.WithLabelValues(name, group, state, fmt.Sprintf("%d", start), fmt.Sprintf("%d", exitStatus)).Set(float64(value))
+		processesMetric.WithLabelValues(name, group, state, fmt.Sprintf("%d", exitStatus)).Set(float64(value))
+
+		// Calculate uptime and set the supervisor_process_uptime metric
+		if value == 1 {
+			uptime := time.Now().Unix() - startTime
+			supervisorProcessUptime.WithLabelValues(name, group).Set(float64(uptime))
+		}
 	}
 }
 
@@ -118,9 +139,6 @@ func main() {
 		fmt.Printf("Supervisor Exporter v%v\n", appVersion)
 		os.Exit(0)
 	}
-
-	prometheus.MustRegister(processesMetric)
-	prometheus.MustRegister(supervisordUp)
 
 	http.HandleFunc(metricsPath, metricsHandler)
 
